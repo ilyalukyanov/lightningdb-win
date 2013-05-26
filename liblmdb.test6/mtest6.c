@@ -18,12 +18,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "win32compability.h"
 #include "lmdb.h"
-
-#ifdef _WIN32
-# define srandom srand
-# define random rand
-#endif
 
 char dkbuf[1024];
 

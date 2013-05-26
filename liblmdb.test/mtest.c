@@ -15,12 +15,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include "win32compability.h"
 #include "lmdb.h"
-
-#ifdef _WIN32
-# define srandom srand
-# define random rand
-#endif
 
 
 int main(int argc,char * argv[])

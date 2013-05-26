@@ -131,10 +131,6 @@
 #ifndef _LMDB_H_
 #define _LMDB_H_
 
-#ifdef _WIN32
-typedef int mode_t;
-#endif
-
 #include <sys/types.h>
 
 #ifdef __cplusplus

@@ -21,6 +21,21 @@
     <ClInclude Include="midl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="build_compability_includes\stubs\sys\param.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="build_compability_includes\stubs\unistd.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="build_compability_includes\stubs\resolv.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="build_compability_includes\stubs\inttypes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="build_compability_includes\real\win32compability.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="mdb.c">
@@ -29,5 +44,13 @@
     <ClCompile Include="midl.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="build_compability_includes\real\win32compability.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="mdb.def">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

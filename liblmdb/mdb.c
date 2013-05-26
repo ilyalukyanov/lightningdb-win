@@ -33,42 +33,34 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #define _GNU_SOURCE 1
-
-#ifdef _WIN32
-#include <windows.h>
-#include <stdint.h>
-#include <basetsd.h>
-
-typedef int pid_t;
-typedef SSIZE_T ssize_t;
-typedef int mode_t;
-
- #define SEM_FAILED NULL
-#else
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/param.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sys/uio.h>
 #include <sys/mman.h>
 #ifdef HAVE_SYS_FILE_H
 #include <sys/file.h>
 #endif
 #include <fcntl.h>
-#include <inttypes.h>
-#include <unistd.h>
-#if !(defined(BYTE_ORDER) || defined(__BYTE_ORDER))
-#include <resolv.h>	/* defines BYTE_ORDER on HPUX and Solaris */
-#endif
 #endif
 
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <stddef.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
+
+#if !(defined(BYTE_ORDER) || defined(__BYTE_ORDER))
+#include <resolv.h>	/* defines BYTE_ORDER on HPUX and Solaris */
+#endif
 
 #if defined(__APPLE__) || defined (BSD)
 # define MDB_USE_POSIX_SEM	1
@@ -293,14 +285,11 @@ typedef MDB_ID	txnid_t;
 #define MDB_DEBUG 0
 #endif
 
-#ifdef MDB_DEBUG
-static int mdb_debug;
-static txnid_t mdb_debug_start;
-#endif
-
 #if !(__STDC_VERSION__ >= 199901L || defined(__GNUC__))
 # define DPRINTF	(void)	/* Vararg macros may be unsupported */
 #elif MDB_DEBUG
+static int mdb_debug;
+static txnid_t mdb_debug_start;
 
 	/**	Print a debug message with printf formatting. */
 # define DPRINTF(fmt, ...)	/**< Requires 2 or more args */ \
@@ -968,6 +957,8 @@ struct MDB_env {
 	MDB_ID2		me_dirty_list[MDB_IDL_UM_SIZE];
 	/** Max number of freelist items that can fit in a single overflow page */
 	unsigned int	me_maxfree_1pg;
+	/** Max size of a node on a page */
+	unsigned int	me_nodemax;
 #ifdef _WIN32
 	HANDLE		me_rmutex;		/* Windows mutexes don't reside in shared mem */
 	HANDLE		me_wmutex;
@@ -1860,7 +1851,7 @@ mdb_txn_renew(MDB_txn *txn)
 {
 	int rc;
 
-	if (! (txn && txn->mt_flags & MDB_TXN_RDONLY))
+	if (! (txn && (txn->mt_flags & MDB_TXN_RDONLY)))
 		return EINVAL;
 
 	if (txn->mt_env->me_flags & MDB_FATAL_ERROR) {
@@ -2761,7 +2752,6 @@ mdb_env_create(MDB_env **env)
 	e->me_rmutex = SEM_FAILED;
 	e->me_wmutex = SEM_FAILED;
 #endif
-
 	e->me_pid = getpid();
 	VGMEMP_CREATE(e,0,0);
 	*env = e;
@@ -2882,7 +2872,15 @@ mdb_env_open2(MDB_env *env)
 		env->me_map = NULL;
 		return ErrCode();
 	}
-#endif
+	/* Turn off readahead. It's harmful when the DB is larger than RAM. */
+#ifdef MADV_RANDOM
+	madvise(env->me_map, env->me_mapsize, MADV_RANDOM);
+#else
+#ifdef POSIX_MADV_RANDOM
+	posix_madvise(env->me_map, env->me_mapsize, POSIX_MADV_RANDOM);
+#endif /* POSIX_MADV_RANDOM */
+#endif /* MADV_RANDOM */
+#endif /* _WIN32 */
 
 	if (newenv) {
 		if (flags & MDB_FIXEDMAP)
@@ -2901,6 +2899,7 @@ mdb_env_open2(MDB_env *env)
 	}
 	env->me_psize = meta.mm_psize;
 	env->me_maxfree_1pg = (env->me_psize - PAGEHDRSZ) / sizeof(pgno_t) - 1;
+	env->me_nodemax = (env->me_psize - PAGEHDRSZ) / MDB_MINKEYS;
 
 	env->me_maxpg = env->me_mapsize / env->me_psize;
 
@@ -4114,16 +4113,18 @@ mdb_page_search(MDB_cursor *mc, MDB_val *key, int flags)
 				if (*mc->mc_dbflag & DB_STALE) {
 					MDB_val data;
 					int exact = 0;
+					uint16_t flags;
 					MDB_node *leaf = mdb_node_search(&mc2,
 						&mc->mc_dbx->md_name, &exact);
 					if (!exact)
 						return MDB_NOTFOUND;
 					mdb_node_read(mc->mc_txn, leaf, &data);
+					memcpy(&flags, ((char *) data.mv_data + offsetof(MDB_db, md_flags)),
+						sizeof(uint16_t));
 					/* The txn may not know this DBI, or another process may
 					 * have dropped and recreated the DB with other flags.
 					 */
-					if (mc->mc_db->md_flags != *(uint16_t *)
-						((char *) data.mv_data + offsetof(MDB_db, md_flags)))
+					if (mc->mc_db->md_flags != flags)
 						return MDB_INCOMPATIBLE;
 					memcpy(mc->mc_db, data.mv_data, sizeof(MDB_db));
 				}
@@ -5039,8 +5040,7 @@ reuse:
 				}
 				offset += offset & 1;
 				if (NODESIZE + sizeof(indx_t) + NODEKSZ(leaf) + NODEDSZ(leaf) +
-					offset >= (mc->mc_txn->mt_env->me_psize - PAGEHDRSZ) /
-						MDB_MINKEYS) {
+					offset >= mc->mc_txn->mt_env->me_nodemax) {
 					/* yes, convert it */
 					dummy.md_flags = 0;
 					if (mc->mc_db->md_flags & MDB_DUPFIXED) {
@@ -5218,6 +5218,8 @@ put_sub:
 						}
 					}
 				}
+                                /* we've done our job */
+                                dkey.mv_size = 0;
 			}
 			if (flags & MDB_APPENDDUP)
 				xflags |= MDB_APPEND;
@@ -5355,7 +5357,7 @@ mdb_leaf_size(MDB_env *env, MDB_val *key, MDB_val *data)
 	size_t		 sz;
 
 	sz = LEAFSIZE(key, data);
-	if (sz >= env->me_psize / MDB_MINKEYS) {
+	if (sz >= env->me_nodemax) {
 		/* put on overflow page */
 		sz -= data->mv_size - sizeof(pgno_t);
 	}
@@ -5380,7 +5382,7 @@ mdb_branch_size(MDB_env *env, MDB_val *key)
 	size_t		 sz;
 
 	sz = INDXSIZE(key);
-	if (sz >= env->me_psize / MDB_MINKEYS) {
+	if (sz >= env->me_nodemax) {
 		/* put on overflow page */
 		/* not implemented */
 		/* sz -= key->size - sizeof(pgno_t); */
@@ -5448,7 +5450,7 @@ mdb_node_add(MDB_cursor *mc, indx_t indx,
 		if (F_ISSET(flags, F_BIGDATA)) {
 			/* Data already on overflow page. */
 			node_size += sizeof(pgno_t);
-		} else if (node_size + data->mv_size >= mc->mc_txn->mt_env->me_psize / MDB_MINKEYS) {
+		} else if (node_size + data->mv_size >= mc->mc_txn->mt_env->me_nodemax) {
 			int ovpages = OVPAGES(data->mv_size, mc->mc_txn->mt_env->me_psize);
 			int rc;
 			/* Put data on overflow page. */
@@ -6250,7 +6252,7 @@ static int
 mdb_rebalance(MDB_cursor *mc)
 {
 	MDB_node	*node;
-	int rc;
+	int rc, minkeys;
 	unsigned int ptop;
 	MDB_cursor	mn;
 
@@ -6380,12 +6382,12 @@ mdb_rebalance(MDB_cursor *mc)
 	DPRINTF("found neighbor page %zu (%u keys, %.1f%% full)",
 	    mn.mc_pg[mn.mc_top]->mp_pgno, NUMKEYS(mn.mc_pg[mn.mc_top]), (float)PAGEFILL(mc->mc_txn->mt_env, mn.mc_pg[mn.mc_top]) / 10);
 
-	/* If the neighbor page is above threshold and has at least two
-	 * keys, move one key from it.
-	 *
-	 * Otherwise we should try to merge them.
+	/* If the neighbor page is above threshold and has enough keys,
+	 * move one key from it. Otherwise we should try to merge them.
+	 * (A branch page must never have less than 2 keys.)
 	 */
-	if (PAGEFILL(mc->mc_txn->mt_env, mn.mc_pg[mn.mc_top]) >= FILL_THRESHOLD && NUMKEYS(mn.mc_pg[mn.mc_top]) >= 2)
+	minkeys = 1 + (IS_BRANCH(mn.mc_pg[mn.mc_top]));
+	if (PAGEFILL(mc->mc_txn->mt_env, mn.mc_pg[mn.mc_top]) >= FILL_THRESHOLD && NUMKEYS(mn.mc_pg[mn.mc_top]) > minkeys)
 		return mdb_node_move(&mn, mc);
 	else {
 		if (mc->mc_ki[ptop] == 0)
@@ -6422,6 +6424,9 @@ mdb_cursor_del0(MDB_cursor *mc, MDB_node *leaf)
 	rc = mdb_rebalance(mc);
 	if (rc != MDB_SUCCESS)
 		mc->mc_txn->mt_flags |= MDB_TXN_ERROR;
+	/* if mc points past last node in page, invalidate */
+	else if (mc->mc_ki[mc->mc_top] >= NUMKEYS(mc->mc_pg[mc->mc_top]))
+		mc->mc_flags &= ~C_INITIALIZED;
 
 	return rc;
 }
