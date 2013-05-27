@@ -15,7 +15,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "win32compability.h"
+#ifdef _WIN32
+#  include "win32compability.h"
+#endif
 #include "lmdb.h"
 
 

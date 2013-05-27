@@ -18,7 +18,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "win32compability.h"
+#ifdef _WIN32
+#  include "win32compability.h"
+#endif
 #include "lmdb.h"
 
 int main(int argc,char * argv[])
@@ -49,7 +51,7 @@ int main(int argc,char * argv[])
 	rc = mdb_env_create(&env);
 	rc = mdb_env_set_mapsize(env, 10485760);
 	rc = mdb_env_set_maxdbs(env, 4);
-	rc = mdb_env_open(env, "testdb5", MDB_FIXEDMAP|MDB_NOSYNC, 0664);
+	rc = mdb_env_open(env, "testdb", MDB_FIXEDMAP|MDB_NOSYNC, 0664);
 	rc = mdb_txn_begin(env, NULL, 0, &txn);
 	rc = mdb_open(txn, "id2", MDB_CREATE|MDB_DUPSORT, &dbi);
 	rc = mdb_cursor_open(txn, dbi, &cursor);
