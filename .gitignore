@@ -1,4 +1,5 @@
 Release/
 *.c~
 *.sdf
+*.opensdf
 *.v11.suo
