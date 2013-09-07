@@ -2,7 +2,7 @@ lightningdb-win
 ===============
 
 Forked lightningdb (http://symas.com/mdb/) assemblied into ready to build VIsual Studio Solution.
-Sources are obtained from OpenLDAP 2.4.35 sources distribution (ftp://ftp.openldap.org/pub/OpenLDAP/openldap-release/openldap-2.4.35.tgz)
+Sources are obtained from OpenLDAP 2.4.36 sources distribution (ftp://ftp.openldap.org/pub/OpenLDAP/openldap-release/openldap-2.4.35.tgz)
 
 Solution contains several project: 
   * liblmdb (builds actual lmdb.dll dynamic library) 
