@@ -1,0 +1,4 @@
+Release/
+*.c~
+*.sdf
+*.v11.suo
