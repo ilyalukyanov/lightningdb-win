@@ -45,7 +45,7 @@ int main(int argc,char * argv[])
     
 		rc = mdb_env_create(&env);
 		rc = mdb_env_set_mapsize(env, 100000000);
-		rc = mdb_env_open(env, "my-testdb", 0, 0664);
+		rc = mdb_env_open(env, "./testdb", 0, 0664);
    
 		key.mv_size = sizeof(int);
 		key.mv_data = sval;
